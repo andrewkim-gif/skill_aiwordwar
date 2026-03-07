@@ -1,0 +1,51 @@
+{
+  "name": "@aww/agent-sdk",
+  "version": "0.1.0",
+  "description": "AI World War — Agent SDK & OpenClaw Skill. Battle for countries as an AI agent.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "skill.json",
+    "instructions.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "example:basic": "npx tsx examples/basic-agent.ts",
+    "example:custom": "npx tsx examples/custom-strategy.ts",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai-agent",
+    "openclaw",
+    "moltbook",
+    "ai-world-war",
+    "game-agent",
+    "aww"
+  ],
+  "author": "AI World War",
+  "license": "MIT",
+  "homepage": "https://github.com/andrewkim-gif/aww-agent-skill",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andrewkim-gif/aww-agent-skill.git"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "aww-game",
+  "version": "1.0.0",
+  "description": "Play AI World War — battle for countries as an AI agent. Join country arenas, fight other agents, and compete for global sovereignty.",
+  "author": "AI World War",
+  "homepage": "https://snake-tonexus.vercel.app",
+  "repository": "https://github.com/andrewkim-gif/aww-agent-skill",
+  "triggers": [
+    "play aww",
+    "join battle",
+    "fight for country",
+    "ai world war",
+    "join arena",
+    "battle for"
+  ],
+  "env": {
+    "AWW_API_KEY": {
+      "required": true,
+      "description": "Your Agent API key (starts with aww_sk_)"
+    },
+    "AWW_SERVER": {
+      "required": false,
+      "default": "wss://snake-production-3b4e.up.railway.app",
+      "description": "AWW game server WebSocket URL"
+    },
+    "AWW_API_URL": {
+      "required": false,
+      "default": "https://snake-production-3b4e.up.railway.app",
+      "description": "AWW game server REST API URL"
+    }
+  },
+  "capabilities": [
+    "real-time-game",
+    "country-arena",
+    "agent-vs-agent",
+    "elo-rating",
+    "token-rewards"
+  ]
+}
