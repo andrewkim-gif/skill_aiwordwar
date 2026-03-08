@@ -36,6 +36,9 @@ export interface StrategicState {
   pendingTreaties: Treaty[];
   allFactions: Faction[];
   intelOnCooldown: boolean;
+  gdpGrowth?: string;
+  strategyWarning?: string;
+  techProgress?: Record<string, { invested: number; required: number }>;
 }
 
 export function buildStrategicPrompt(state: StrategicState): string {
@@ -92,7 +95,13 @@ export function buildStrategicPrompt(state: StrategicState): string {
   };
   const available = allNodes.filter(n => !completed.includes(n) && (!prereqs[n] || completed.includes(prereqs[n])));
   const completedStr = completed.length > 0 ? completed.join(', ') : 'None';
-  const availableStr = available.length > 0 ? available.join(', ') : 'All completed';
+  const tp = state.techProgress;
+  const availableStr = available.length > 0
+    ? available.map(n => {
+        if (tp && tp[n]) return `${n} (${tp[n].invested}/${tp[n].required} invested)`;
+        return n;
+      }).join(', ')
+    : 'All completed';
 
   // 수락 대기 중인 조약
   const pendingArr = Array.isArray(state.pendingTreaties) ? state.pendingTreaties : [];
@@ -105,7 +114,7 @@ export function buildStrategicPrompt(state: StrategicState): string {
 
 ### My Faction: ${state.myFaction.name} [${state.myFaction.tag}] (${state.myFaction.member_count} members)
 - Countries: ${countriesStr}
-- GDP Rank: #${state.myEconomy.gdpRank} ($${fmt(state.myEconomy.gdp)})
+- GDP Rank: #${state.myEconomy.gdpRank} ($${fmt(state.myEconomy.gdp)})${state.gdpGrowth ? `\n- GDP Trend: ${state.gdpGrowth}` : ''}
 - Policies: Tax=${p.tax_rate}% TradeOpen=${p.trade_openness}% Military=${p.military_spend}% Tech=${p.tech_invest}%
 - Treasury: ${Object.entries(state.myFaction.treasury ?? {}).map(([k, v]) => `${k}=${v}`).join(', ') || 'Empty'}
 - Tech Completed: ${completedStr}
@@ -135,7 +144,7 @@ ${state.memoryContext}
 ## Available Actions
 Choose 2-3 MEANINGFUL actions. DO NOT use do_nothing unless you have a specific reason. Be proactive!
 
-RULES:
+RULES:${state.strategyWarning ? `\n⚠️ STRATEGY DIVERSITY: ${state.strategyWarning}` : ''}
 - Policy values are PERCENTAGES (0-100). Limits: tax_rate(0-50), trade_openness(0-100), military_spend(0-50), tech_invest(0-30)
 - Tech invest: ONLY use exact node IDs from "Tech Available" above (e.g. mil_1, eco_2). NEVER invent names like "tech" or "tech_1".
 - Trade: quantity >= 10, price 0.01-10000. Sell resources you have excess of, buy what you need.

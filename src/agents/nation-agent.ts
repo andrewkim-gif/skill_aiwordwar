@@ -7,7 +7,7 @@ import { AWWAgent } from '../agent.js';
 import { LLMBridge } from '../llm/llm-bridge.js';
 import type { LLMConfig } from '../llm/llm-bridge.js';
 import { AgentMemory } from '../llm/memory.js';
-import type { PastDecision } from '../llm/memory.js';
+import type { PastDecision, DiplomaticNote } from '../llm/memory.js';
 import { buildStrategicPrompt } from '../llm/prompts.js';
 import type { StrategicState } from '../llm/prompts.js';
 import { parseActions } from '../llm/action-parser.js';
@@ -45,6 +45,8 @@ export class LLMNationAgent {
   private running = false;
   private myFactionId: string | null = null;
   private lastIntelTick = 0; // 마지막 인텔 성공 틱 (1시간 쿨다운 추적)
+  private gdpHistory: number[] = []; // GDP 변화 추적 (최근 N틱)
+  private recentActionTypes: string[] = []; // 전략 다양화 추적 (최근 10개)
   private onAction?: (agentName: string, action: string, result: string) => void;
 
   constructor(config: NationAgentConfig) {
@@ -119,6 +121,9 @@ export class LLMNationAgent {
   private async strategicTick(): Promise<void> {
     this.tickNumber++;
     this.log(`Tick #${this.tickNumber} — gathering state...`);
+
+    // 전략 목표 자동 설정 (매 틱 갱신)
+    this.memory.setGoals(['Grow GDP', 'Diversify actions', 'Maintain alliances']);
 
     try {
       // 1. 상태 수집
@@ -271,6 +276,46 @@ export class LLMNationAgent {
     const intelCooldownTicks = 120; // 60min / 0.5min = 120 ticks
     const intelOnCooldown = (this.tickNumber - this.lastIntelTick) < intelCooldownTicks && this.lastIntelTick > 0;
 
+    // GDP 변화 추적 (최근 5틱)
+    const currentGdp = myGdpEntry?.gdp ?? 0;
+    this.gdpHistory.push(currentGdp);
+    if (this.gdpHistory.length > 6) this.gdpHistory.shift(); // 5틱 비교 위해 6개 유지
+
+    let gdpGrowth: string | undefined;
+    if (this.gdpHistory.length >= 2) {
+      const prev = this.gdpHistory[0];
+      const curr = this.gdpHistory[this.gdpHistory.length - 1];
+      if (prev > 0) {
+        const growthPct = ((curr - prev) / prev) * 100;
+        gdpGrowth = `${growthPct >= 0 ? '+' : ''}${growthPct.toFixed(1)}% over last ${this.gdpHistory.length - 1} ticks`;
+      }
+    }
+
+    // 전략 다양화 경고
+    let strategyWarning: string | undefined;
+    if (this.recentActionTypes.length >= 3) {
+      const last3 = this.recentActionTypes.slice(-3);
+      if (last3[0] === last3[1] && last3[1] === last3[2]) {
+        strategyWarning = `You have used "${last3[0]}" 3+ times in a row. Diversify your strategy!`;
+      }
+    }
+
+    // 기술 투자 진행률 추출
+    let techProgress: Record<string, { invested: number; required: number }> | undefined;
+    if (research?.node_progress && typeof research.node_progress === 'object') {
+      techProgress = {};
+      for (const [nodeId, progress] of Object.entries(research.node_progress)) {
+        const p = progress as any;
+        if (p && typeof p === 'object' && !p.is_completed) {
+          techProgress[nodeId] = {
+            invested: p.invested ?? p.current ?? 0,
+            required: p.required ?? p.cost ?? 0,
+          };
+        }
+      }
+      if (Object.keys(techProgress).length === 0) techProgress = undefined;
+    }
+
     return {
       myFaction: factionDetail ?? {
         id: 'unknown',
@@ -306,6 +351,9 @@ export class LLMNationAgent {
       pendingTreaties,
       allFactions: factionList,
       intelOnCooldown,
+      gdpGrowth,
+      strategyWarning,
+      techProgress,
     };
   }
 
@@ -405,10 +453,78 @@ export class LLMNationAgent {
       };
       this.memory.log(decision);
 
+      // 외교 관련 액션 결과 → 메모리에 관계 기록
+      if (result === 'success') {
+        this.wireDiplomaticMemory(action.action, p);
+      }
+
+      // 전략 다양화 추적 (최근 10개)
+      this.recentActionTypes.push(action.action);
+      if (this.recentActionTypes.length > 10) this.recentActionTypes.shift();
+
       // 콜백 (SimRunner 로깅용)
       this.onAction?.(this.name, `${action.action}(${JSON.stringify(p)})`, result);
 
       this.log(`  → ${action.action}: ${result}`);
+    }
+  }
+
+  /**
+   * 외교 액션 성공 시 AgentMemory에 관계 기록
+   */
+  private wireDiplomaticMemory(action: string, params: Record<string, unknown>): void {
+    const now = Date.now();
+    switch (action) {
+      case 'propose_treaty': {
+        const targetId = params.target as string;
+        const treatyType = params.type as string;
+        const note: DiplomaticNote = {
+          factionId: targetId,
+          factionName: targetId.slice(0, 8),
+          relation: 'ally',
+          note: `proposed ${treatyType}`,
+          updatedAt: now,
+        };
+        this.memory.setRelation(targetId, note);
+        break;
+      }
+      case 'accept_treaty': {
+        // accept_treaty에서는 proposer 정보가 params에 직접 없으므로 treatyId 기반 추적
+        const treatyId = params.treatyId as string;
+        const note: DiplomaticNote = {
+          factionId: treatyId,
+          factionName: treatyId.slice(0, 8),
+          relation: 'ally',
+          note: 'accepted treaty',
+          updatedAt: now,
+        };
+        this.memory.setRelation(treatyId, note);
+        break;
+      }
+      case 'reject_treaty': {
+        const treatyId = params.treatyId as string;
+        const note: DiplomaticNote = {
+          factionId: treatyId,
+          factionName: treatyId.slice(0, 8),
+          relation: 'rival',
+          note: 'rejected treaty',
+          updatedAt: now,
+        };
+        this.memory.setRelation(treatyId, note);
+        break;
+      }
+      case 'declare_war': {
+        const targetId = params.target as string;
+        const note: DiplomaticNote = {
+          factionId: targetId,
+          factionName: targetId.slice(0, 8),
+          relation: 'enemy',
+          note: 'declared war',
+          updatedAt: now,
+        };
+        this.memory.setRelation(targetId, note);
+        break;
+      }
     }
   }
 
